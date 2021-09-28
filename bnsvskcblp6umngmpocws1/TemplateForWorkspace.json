@@ -33,6 +33,43 @@
 	},
 	"resources": [
 		{
+			"name": "[concat(parameters('workspaceName'), '/Data Exploration and ML Modeling')]",
+			"type": "Microsoft.Synapse/workspaces/pipelines",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"activities": [
+					{
+						"name": "Data Exploration and ML Modeling",
+						"type": "SynapseNotebook",
+						"dependsOn": [],
+						"policy": {
+							"timeout": "7.00:00:00",
+							"retry": 0,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"notebook": {
+								"referenceName": "Data Exploration and ML Modeling - NYC taxi predict using Spark MLlib",
+								"type": "NotebookReference"
+							},
+							"snapshot": true
+						}
+					}
+				],
+				"policy": {
+					"elapsedTimeMetric": {},
+					"cancelAfter": {}
+				},
+				"annotations": []
+			},
+			"dependsOn": [
+				"[concat(variables('workspaceId'), '/notebooks/Data Exploration and ML Modeling - NYC taxi predict using Spark MLlib')]"
+			]
+		},
+		{
 			"name": "[concat(parameters('workspaceName'), '/TripFaresDataPipeline')]",
 			"type": "Microsoft.Synapse/workspaces/pipelines",
 			"apiVersion": "2019-06-01-preview",
@@ -1296,6 +1333,46 @@
 			"dependsOn": []
 		},
 		{
+			"name": "[concat(parameters('workspaceName'), '/CreateExternalDatabase_USPopulation')]",
+			"type": "Microsoft.Synapse/workspaces/sqlscripts",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"content": {
+					"query": "-- Drop database if it exists\nDROP DATABASE IF EXISTS uspopulation\nGO\n\n-- Create new database\nCREATE DATABASE [uspopulation];\nGO\n\nUSE [uspopulation]\nGO\n\n-- There is no credential in data surce. We are using public storage account which doesn't need a secret.\nCREATE EXTERNAL DATA SOURCE AzureOpenData\nWITH (LOCATION = 'https://azureopendatastorage.blob.core.windows.net/')\n\nDROP VIEW IF EXISTS usPopulationView;\nGO\n\nCREATE VIEW usPopulationView AS\nSELECT\n    *\nFROM\n    OPENROWSET(\n        BULK 'censusdatacontainer/release/us_population_county/year=20*/*.parquet',\n        DATA_SOURCE = 'AzureOpenData',\n        FORMAT='PARQUET'\n    ) AS uspv;",
+					"metadata": {
+						"language": "sql"
+					},
+					"currentConnection": {
+						"databaseName": "uspopulation",
+						"poolName": "Built-in"
+					},
+					"resultLimit": 5000
+				},
+				"type": "SqlQuery"
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('workspaceName'), '/CreateExternalTable_nyctaxi')]",
+			"type": "Microsoft.Synapse/workspaces/sqlscripts",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"content": {
+					"query": "CREATE DATABASE nyctaxi;\nGO;\n\nUSE nyctaxi;\n\nCREATE EXTERNAL DATA SOURCE ds_public_tripfare\nWITH (LOCATION = 'https://bnsvskcblp6umngmpoc.dfs.core.windows.net/public/')\nGO\n\n--DROP EXTERNAL FILE FORMAT delimited_public_tripfare  \nCREATE EXTERNAL FILE FORMAT delimited_public_tripfare  \nWITH (  \n    FORMAT_TYPE = DELIMITEDTEXT,  \n    FORMAT_OPTIONS (  \n        FIELD_TERMINATOR = ',', \n        FIRST_ROW = 2, \n        USE_TYPE_DEFAULT = True,\n        STRING_DELIMITER = '\"'\n          )\n)\nGO\n\nCREATE SCHEMA nyc\nGO\n\nCREATE EXTERNAL TABLE nyc.public_tripfare (medallion varchar(100),\n    hack_license varchar(100),\n    vendor_id varchar(100),\n    pickup_datetime varchar(100),\n    payment_type varchar(100),\n    fare_amount varchar(100),\n    surcharge varchar(100), \n    mta_tax varchar(100),\n    tip_amount varchar(100),\n    tolls_amount varchar(100),  \n    total_amount varchar(100)\n)\nWITH (DATA_SOURCE = ds_public_tripfare, LOCATION = N'fares-data.csv',FILE_FORMAT = delimited_public_tripfare)\nGO\n\nSELECT TOP 10 * FROM nyc.public_tripfare;\n\nCREATE EXTERNAL FILE FORMAT public_nycparquet  \nWITH (  \n    FORMAT_TYPE = PARQUET  ,  \n    DATA_COMPRESSION = 'org.apache.hadoop.io.compress.SnappyCodec'\n)\nGO\n\nCREATE EXTERNAL TABLE dbo.public_agg_nyc_tripfare\n    WITH (\n        LOCATION = '/agg',  \n        DATA_SOURCE = ds_public_tripfare,  \n        FILE_FORMAT = public_nycparquet  \n) AS SELECT \n    vendor_id\n    ,hack_license\n    ,SUM(CAST(fare_amount AS FLOAT)) fare_amount\n    ,SUM(CAST(total_amount AS float)) total_amount\n    FROM nyc.public_tripfare\n    GROUP BY \n    vendor_id\n    ,hack_license",
+					"metadata": {
+						"language": "sql"
+					},
+					"currentConnection": {
+						"databaseName": "nyctaxi",
+						"poolName": "Built-in"
+					},
+					"resultLimit": 5000
+				},
+				"type": "SqlQuery"
+			},
+			"dependsOn": []
+		},
+		{
 			"name": "[concat(parameters('workspaceName'), '/Data Exploration and ML Modeling - NYC taxi predict using Spark MLlib')]",
 			"type": "Microsoft.Synapse/workspaces/notebooks",
 			"apiVersion": "2019-06-01-preview",
@@ -1632,6 +1709,269 @@
 			"dependsOn": []
 		},
 		{
+			"name": "[concat(parameters('workspaceName'), '/Read and write data from Azure Data Lake Storage Gen2')]",
+			"type": "Microsoft.Synapse/workspaces/notebooks",
+			"apiVersion": "2019-06-01-preview",
+			"properties": {
+				"nbformat": 4,
+				"nbformat_minor": 2,
+				"bigDataPool": {
+					"referenceName": "ws1sparkpool1",
+					"type": "BigDataPoolReference"
+				},
+				"sessionProperties": {
+					"driverMemory": "56g",
+					"driverCores": 8,
+					"executorMemory": "56g",
+					"executorCores": 8,
+					"numExecutors": 2,
+					"conf": {
+						"spark.dynamicAllocation.enabled": "false",
+						"spark.dynamicAllocation.minExecutors": "2",
+						"spark.dynamicAllocation.maxExecutors": "2"
+					}
+				},
+				"metadata": {
+					"saveOutput": true,
+					"enableDebugMode": false,
+					"kernelspec": {
+						"name": "synapse_spark",
+						"display_name": "Synapse Spark"
+					},
+					"language_info": {
+						"name": "scala"
+					},
+					"a365ComputeOptions": {
+						"id": "/subscriptions/c0ec61c2-6464-4837-967d-a4f9b4428352/resourceGroups/AzureSynapsePOC_BNS/providers/Microsoft.Synapse/workspaces/bnsvskcblp6umngmpocws1/bigDataPools/ws1sparkpool1",
+						"name": "ws1sparkpool1",
+						"type": "Spark",
+						"endpoint": "https://bnsvskcblp6umngmpocws1.dev.azuresynapse.net/livyApi/versions/2019-11-01-preview/sparkPools/ws1sparkpool1",
+						"auth": {
+							"type": "AAD",
+							"authResource": "https://dev.azuresynapse.net"
+						},
+						"sparkVersion": "2.4",
+						"nodeCount": 5,
+						"cores": 8,
+						"memory": 56
+					}
+				},
+				"cells": [
+					{
+						"cell_type": "markdown",
+						"source": [
+							"# Access data on Azure Data Lake Storage Gen2 (ADLS Gen2) with Synapse Spark\n",
+							"\n",
+							"Azure Data Lake Storage Gen2 (ADLS Gen2) is used as the storage account associated with a Synapse workspace. A synapse workspace can have a default ADLS Gen2 storage account and additional linked storage accounts. \n",
+							"\n",
+							"You can access data on ADLS Gen2 with Synapse Spark via following URL:\n",
+							"    \n",
+							"    abfss://<container_name>@<storage_account_name>.dfs.core.windows.net/<path>\n",
+							"\n",
+							"This notebook provides examples of how to read data from ADLS Gen2 account into a Spark context and how to write the output of Spark jobs directly into an ADLS Gen2 location.\n",
+							"\n",
+							"## Pre-requisites\n",
+							"Synapse leverage AAD pass-through to access any ADLS Gen2 account (or folder) to which you have a **Blob Storage Contributor** permission. No credentials or access token is required. "
+						]
+					},
+					{
+						"cell_type": "markdown",
+						"source": [
+							"## Load a sample data\n",
+							"\n",
+							"Let's first load the [public holidays](https://azure.microsoft.com/en-us/services/open-datasets/catalog/public-holidays/) from Azure Open datasets as a sample."
+						]
+					},
+					{
+						"cell_type": "code",
+						"source": [
+							"// set blob storage account connection for open dataset\n",
+							"\n",
+							"val hol_blob_account_name = \"azureopendatastorage\"\n",
+							"val hol_blob_container_name = \"holidaydatacontainer\"\n",
+							"val hol_blob_relative_path = \"Processed\"\n",
+							"val hol_blob_sas_token = \"\"\n",
+							"\n",
+							"val hol_wasbs_path = f\"wasbs://$hol_blob_container_name@$hol_blob_account_name.blob.core.windows.net/$hol_blob_relative_path\"\n",
+							"spark.conf.set(f\"fs.azure.sas.$hol_blob_container_name.$hol_blob_account_name.blob.core.windows.net\",hol_blob_sas_token)"
+						],
+						"outputs": [],
+						"execution_count": 1
+					},
+					{
+						"cell_type": "code",
+						"source": [
+							"// load the sample data as a Spark DataFrame\n",
+							"val hol_df = spark.read.parquet(hol_wasbs_path) \n",
+							"hol_df.show(5, truncate = false)"
+						],
+						"outputs": [],
+						"execution_count": 2
+					},
+					{
+						"cell_type": "markdown",
+						"source": [
+							"## Write data to the default ADLS Gen2 storage\n",
+							"\n",
+							"We are going to write the spark dateframe to your default ADLS Gen2 storage account.\n",
+							""
+						]
+					},
+					{
+						"cell_type": "code",
+						"source": [
+							"// set your storage account connection\n",
+							"\n",
+							"val account_name = \"bnsvskcblp6umngmpoc\" // replace with your blob name\n",
+							"val container_name = \"public\" //replace with your container name\n",
+							"val relative_path = \"holiday_data\" //replace with your relative folder path\n",
+							"\n",
+							"val adls_path = f\"abfss://$container_name@$account_name.dfs.core.windows.net/$relative_path\""
+						],
+						"outputs": [],
+						"execution_count": 3
+					},
+					{
+						"cell_type": "markdown",
+						"source": [
+							"### Save a dataframe as Parquet, JSON or CSV\n",
+							"If you have a dataframe, you can save it to Parquet or JSON with the .write.parquet(), .write.json() and .write.csv() methods respectively.\n",
+							"\n",
+							"Dataframes can be saved in any format, regardless of the input format.\n",
+							""
+						]
+					},
+					{
+						"cell_type": "code",
+						"source": [
+							"// set the path for the output file\n",
+							"\n",
+							"val parquet_path = adls_path + \"holiday.parquet\"\n",
+							"val json_path = adls_path + \"holiday.json\"\n",
+							"val csv_path = adls_path + \"holiday.csv\""
+						],
+						"outputs": [],
+						"execution_count": 4
+					},
+					{
+						"cell_type": "code",
+						"source": [
+							"import org.apache.spark.sql.SaveMode\n",
+							"\n",
+							"hol_df.write.mode(SaveMode.Overwrite).parquet(parquet_path)\n",
+							"hol_df.write.mode(SaveMode.Overwrite).json(json_path)\n",
+							"hol_df.write.mode(SaveMode.Overwrite).option(\"header\", \"true\").csv(csv_path)"
+						],
+						"outputs": [],
+						"execution_count": 5
+					},
+					{
+						"cell_type": "markdown",
+						"source": [
+							"### Save a dataframe as text files\n",
+							"If you have a dataframe that you want ot save as text file, you must first covert it to an RDD and then save that RDD as a text file.\n",
+							""
+						]
+					},
+					{
+						"cell_type": "code",
+						"source": [
+							"// Define the text file path and covert spark dataframe into RDD\n",
+							"val text_path = adls_path + \"holiday.txt\"\n",
+							"val hol_RDD = hol_df.rdd"
+						],
+						"outputs": [],
+						"execution_count": 6
+					},
+					{
+						"cell_type": "code",
+						"source": [
+							"// Save RDD as text file\n",
+							"hol_RDD.saveAsTextFile(text_path)"
+						],
+						"outputs": [],
+						"execution_count": 7
+					},
+					{
+						"cell_type": "markdown",
+						"source": [
+							"# Read data from the default ADLS Gen2 storage\n",
+							""
+						]
+					},
+					{
+						"cell_type": "markdown",
+						"source": [
+							"### Create a dataframe from parquet files\n",
+							""
+						]
+					},
+					{
+						"cell_type": "code",
+						"source": [
+							"val df_parquet = spark.read.parquet(parquet_path)"
+						],
+						"outputs": [],
+						"execution_count": 8
+					},
+					{
+						"cell_type": "markdown",
+						"source": [
+							"### Create a dataframe from JSON files\n",
+							""
+						]
+					},
+					{
+						"cell_type": "code",
+						"source": [
+							"val df_json = spark.read.json(json_path)"
+						],
+						"outputs": [],
+						"execution_count": 9
+					},
+					{
+						"cell_type": "markdown",
+						"source": [
+							"### Create a dataframe from CSV files\n",
+							""
+						]
+					},
+					{
+						"cell_type": "code",
+						"source": [
+							"val df_csv = spark.read.option(\"header\", \"true\").csv(csv_path)"
+						],
+						"outputs": [],
+						"execution_count": 10
+					},
+					{
+						"cell_type": "markdown",
+						"source": [
+							"### Create an RDD from text file\n",
+							""
+						]
+					},
+					{
+						"cell_type": "code",
+						"source": [
+							"val text = sc.textFile(text_path)"
+						],
+						"outputs": [],
+						"execution_count": 11
+					},
+					{
+						"cell_type": "code",
+						"source": [
+							"text.take(5).foreach(println)"
+						],
+						"outputs": [],
+						"execution_count": 12
+					}
+				]
+			},
+			"dependsOn": []
+		},
+		{
 			"name": "[concat(parameters('workspaceName'), '/bnsvskcblp6umngmpocws1p1')]",
 			"type": "Microsoft.Synapse/workspaces/sqlPools",
 			"apiVersion": "2019-06-01-preview",
@@ -1649,46 +1989,6 @@
 			"type": "Microsoft.Synapse/workspaces/managedVirtualNetworks",
 			"apiVersion": "2019-06-01-preview",
 			"properties": {},
-			"dependsOn": []
-		},
-		{
-			"name": "[concat(parameters('workspaceName'), '/CreateExternalTable_nyctaxi')]",
-			"type": "Microsoft.Synapse/workspaces/sqlscripts",
-			"apiVersion": "2019-06-01-preview",
-			"properties": {
-				"content": {
-					"query": "CREATE DATABASE nyctaxi;\nGO;\n\nUSE nyctaxi;\n\nCREATE EXTERNAL DATA SOURCE ds_public_tripfare\nWITH (LOCATION = 'https://bnsvskcblp6umngmpoc.dfs.core.windows.net/public/')\nGO\n\n--DROP EXTERNAL FILE FORMAT delimited_public_tripfare  \nCREATE EXTERNAL FILE FORMAT delimited_public_tripfare  \nWITH (  \n    FORMAT_TYPE = DELIMITEDTEXT,  \n    FORMAT_OPTIONS (  \n        FIELD_TERMINATOR = ',', \n        FIRST_ROW = 2, \n        USE_TYPE_DEFAULT = True,\n        STRING_DELIMITER = '\"'\n          )\n)\nGO\n\nCREATE SCHEMA nyc\nGO\n\nCREATE EXTERNAL TABLE nyc.public_tripfare (medallion varchar(100),\n    hack_license varchar(100),\n    vendor_id varchar(100),\n    pickup_datetime varchar(100),\n    payment_type varchar(100),\n    fare_amount varchar(100),\n    surcharge varchar(100), \n    mta_tax varchar(100),\n    tip_amount varchar(100),\n    tolls_amount varchar(100),  \n    total_amount varchar(100)\n)\nWITH (DATA_SOURCE = ds_public_tripfare, LOCATION = N'fares-data.csv',FILE_FORMAT = delimited_public_tripfare)\nGO\n\nSELECT TOP 10 * FROM nyc.public_tripfare;\n\nCREATE EXTERNAL FILE FORMAT public_nycparquet  \nWITH (  \n    FORMAT_TYPE = PARQUET  ,  \n    DATA_COMPRESSION = 'org.apache.hadoop.io.compress.SnappyCodec'\n)\nGO\n\nCREATE EXTERNAL TABLE dbo.public_agg_nyc_tripfare\n    WITH (\n        LOCATION = '/agg',  \n        DATA_SOURCE = ds_public_tripfare,  \n        FILE_FORMAT = public_nycparquet  \n) AS SELECT \n    vendor_id\n    ,hack_license\n    ,SUM(CAST(fare_amount AS FLOAT)) fare_amount\n    ,SUM(CAST(total_amount AS float)) total_amount\n    FROM nyc.public_tripfare\n    GROUP BY \n    vendor_id\n    ,hack_license",
-					"metadata": {
-						"language": "sql"
-					},
-					"currentConnection": {
-						"databaseName": "nyctaxi",
-						"poolName": "Built-in"
-					},
-					"resultLimit": 5000
-				},
-				"type": "SqlQuery"
-			},
-			"dependsOn": []
-		},
-		{
-			"name": "[concat(parameters('workspaceName'), '/CreateExternalDatabase_USPopulation')]",
-			"type": "Microsoft.Synapse/workspaces/sqlscripts",
-			"apiVersion": "2019-06-01-preview",
-			"properties": {
-				"content": {
-					"query": "-- Drop database if it exists\nDROP DATABASE IF EXISTS uspopulation\nGO\n\n-- Create new database\nCREATE DATABASE [uspopulation];\nGO\n\nUSE [uspopulation]\nGO\n\n-- There is no credential in data surce. We are using public storage account which doesn't need a secret.\nCREATE EXTERNAL DATA SOURCE AzureOpenData\nWITH (LOCATION = 'https://azureopendatastorage.blob.core.windows.net/')\n\nDROP VIEW IF EXISTS usPopulationView;\nGO\n\nCREATE VIEW usPopulationView AS\nSELECT\n    *\nFROM\n    OPENROWSET(\n        BULK 'censusdatacontainer/release/us_population_county/year=20*/*.parquet',\n        DATA_SOURCE = 'AzureOpenData',\n        FORMAT='PARQUET'\n    ) AS uspv;",
-					"metadata": {
-						"language": "sql"
-					},
-					"currentConnection": {
-						"databaseName": "uspopulation",
-						"poolName": "Built-in"
-					},
-					"resultLimit": 5000
-				},
-				"type": "SqlQuery"
-			},
 			"dependsOn": []
 		}
 	]
